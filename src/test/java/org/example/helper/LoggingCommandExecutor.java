@@ -8,6 +8,7 @@ import org.openqa.selenium.remote.Response;
 
 import java.io.IOException;
 import java.net.URL;
+import java.nio.file.Paths;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -71,8 +72,12 @@ public class LoggingCommandExecutor implements CommandExecutor {
             // ----> 1) Collector’a ekle (JSON garantisi)
             if (!IGNORED_COMMANDS.contains(cmdName)) {
                 CommandResultLog log = new CommandResultLog();
-                log.setScreenshotName(screenshotPath);
-                log.setMethod(null); // Selenium public API'den kolay erişim yok
+                // sadece dosya adını yaz
+                String shotNameOnly = (screenshotPath == null) ? null
+                        : Paths.get(screenshotPath).getFileName().toString();
+                log.setScreenshotName(shotNameOnly);
+
+                log.setMethod(null);
                 log.setRequestData(String.valueOf(command.getParameters()));
                 log.setResponseData(status == null ? null : String.valueOf(status));
                 log.setRequestPath(cmdName);
