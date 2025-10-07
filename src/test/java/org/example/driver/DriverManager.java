@@ -23,6 +23,7 @@ public class DriverManager {
     private static final Properties props = new Properties();
 
     static {
+        // Gauge projesi için: env/default/java.properties yolunu düz dosyadan yüklüyoruz
         try (InputStream in = new FileInputStream("env/default/java.properties")) {
             props.load(in);
         } catch (Exception e) {
@@ -33,12 +34,12 @@ public class DriverManager {
     public static void start() {
         if (TL_DRIVER.get() != null) return;
 
-        String browser = props.getProperty("browser", "chrome");
-        boolean headless = Boolean.parseBoolean(props.getProperty("headless", "true"));
-        long implicitWait = Long.parseLong(props.getProperty("implicitWaitSeconds", "5"));
-        long pageLoadTimeout = Long.parseLong(props.getProperty("pageLoadTimeoutSeconds", "30"));
-        String remoteUrl = props.getProperty("remoteUrl", "").trim();
-        String jsonLogPath = props.getProperty("commandLogPath", "reports/commands/commands.json");
+        final String browser         = props.getProperty("browser", "chrome");
+        final boolean headless       = Boolean.parseBoolean(props.getProperty("headless", "true"));
+        final long implicitWait      = Long.parseLong(props.getProperty("implicitWaitSeconds", "5"));
+        final long pageLoadTimeout   = Long.parseLong(props.getProperty("pageLoadTimeoutSeconds", "30"));
+        final String remoteUrl       = props.getProperty("remoteUrl", "").trim();
+        final String jsonLogPath     = props.getProperty("commandLogPath", "reports/commands/commands.json");
 
         try {
             WebDriver driver;
@@ -47,8 +48,7 @@ public class DriverManager {
                 ChromeOptions options = new ChromeOptions();
                 options.setPageLoadStrategy(PageLoadStrategy.NORMAL);
                 if (headless) {
-                    options.addArguments("--headless");
-                    options.addArguments("--window-size=1920,1080");
+                    options.addArguments("--headless", "--window-size=1920,1080");
                 } else {
                     options.addArguments("--start-maximized");
                 }
@@ -70,26 +70,23 @@ public class DriverManager {
                 if (!remoteUrl.isEmpty()) {
                     System.out.println("🌐 Remote Chrome WebDriver kullanılacak: " + remoteUrl);
                     LoggingCommandExecutor exec = new LoggingCommandExecutor(new URL(remoteUrl));
-                    exec.setSink(new CommandJsonSink(jsonLogPath));
-
+                    exec.setSink(new CommandJsonSink(jsonLogPath)); // komut-json sink
                     RemoteWebDriver raw = new RemoteWebDriver(exec, options);
-                    exec.setDriverSupplier(() -> raw); // komut sonrası screenshot için driver referansı
-
-                    driver = new EventFiringDecorator(new ScreenshotListener()).decorate(raw);
+                    exec.setDriverSupplier(() -> raw);              // screenshot için driver referansı
+                    driver = new EventFiringDecorator<WebDriver>(new ScreenshotListener()).decorate(raw);
                 } else {
                     System.out.println("💻 Lokal ChromeDriver kullanılacak");
                     WebDriver raw = new org.openqa.selenium.chrome.ChromeDriver(options);
-                    driver = new EventFiringDecorator(new ScreenshotListener()).decorate(raw);
+                    driver = new EventFiringDecorator<WebDriver>(new ScreenshotListener()).decorate(raw);
                 }
 
             } else if ("firefox".equalsIgnoreCase(browser)) {
                 FirefoxOptions options = new FirefoxOptions();
                 options.setPageLoadStrategy(PageLoadStrategy.NORMAL);
                 if (headless) {
-                    options.addArguments("-headless");
-                    options.addArguments("--width=1920", "--height=1080");
+                    options.addArguments("-headless", "--width=1920", "--height=1080");
                 } else {
-                    // Firefox’ta gerçek maximize bazen gecikebilir; boyut veriyoruz:
+                    // Firefox'ta bazen gerçek maximize gecikebilir; genişlik-yükseklik veriyoruz.
                     options.addArguments("--width=1920", "--height=1080");
                 }
                 options.addPreference("intl.accept_languages", "en-US,en");
@@ -100,15 +97,13 @@ public class DriverManager {
                     System.out.println("🌐 Remote Firefox WebDriver kullanılacak: " + remoteUrl);
                     LoggingCommandExecutor exec = new LoggingCommandExecutor(new URL(remoteUrl));
                     exec.setSink(new CommandJsonSink(jsonLogPath));
-
                     RemoteWebDriver raw = new RemoteWebDriver(exec, options);
                     exec.setDriverSupplier(() -> raw);
-
-                    driver = new EventFiringDecorator(new ScreenshotListener()).decorate(raw);
+                    driver = new EventFiringDecorator<WebDriver>(new ScreenshotListener()).decorate(raw);
                 } else {
                     System.out.println("💻 Lokal FirefoxDriver kullanılacak");
                     WebDriver raw = new org.openqa.selenium.firefox.FirefoxDriver(options);
-                    driver = new EventFiringDecorator(new ScreenshotListener()).decorate(raw);
+                    driver = new EventFiringDecorator<WebDriver>(new ScreenshotListener()).decorate(raw);
                 }
 
             } else {
@@ -117,6 +112,7 @@ public class DriverManager {
 
             driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(implicitWait));
             driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(pageLoadTimeout));
+
             TL_DRIVER.set(driver);
 
         } catch (Exception e) {
@@ -132,8 +128,7 @@ public class DriverManager {
     public static void stop() {
         WebDriver d = TL_DRIVER.get();
         if (d != null) {
-            d.quit();
-            TL_DRIVER.remove();
+            try { d.quit(); } finally { TL_DRIVER.remove(); }
         }
     }
 

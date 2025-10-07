@@ -7,6 +7,7 @@ import com.thoughtworks.gauge.BeforeScenario;
 import com.thoughtworks.gauge.BeforeSuite;
 import com.thoughtworks.gauge.ExecutionContext;
 import org.example.driver.DriverManager;
+import org.example.helper.CommandResultCollector;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.WebDriver;
@@ -26,8 +27,12 @@ public class Hooks {
     }
 
     @AfterSuite
-    public void afterSuite() {
-        // Suite bittikten sonra çalışır
+    public void writeCommandResults() {
+        // bizim klasör: /app/reports/{id}/gauge-reports/commands/
+        CommandResultCollector.flushToJson(
+                "reports/commands",           // proje içinde
+                "commands.json"
+        );
     }
 
     @BeforeScenario
