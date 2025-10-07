@@ -1,7 +1,9 @@
 package org.example.driver;
 
+import org.example.helper.CommandJsonSink;
 import org.example.helper.LoggingCommandExecutor;
 import org.example.helper.ScreenshotListener;
+import org.openqa.selenium.PageLoadStrategy;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.firefox.FirefoxOptions;
@@ -36,15 +38,21 @@ public class DriverManager {
         long implicitWait = Long.parseLong(props.getProperty("implicitWaitSeconds", "5"));
         long pageLoadTimeout = Long.parseLong(props.getProperty("pageLoadTimeoutSeconds", "30"));
         String remoteUrl = props.getProperty("remoteUrl", "").trim();
+        String jsonLogPath = props.getProperty("commandLogPath", "reports/commands/commands.json");
 
         try {
-            WebDriver driver = null;
+            WebDriver driver;
 
             if ("chrome".equalsIgnoreCase(browser)) {
                 ChromeOptions options = new ChromeOptions();
-                if (headless) options.addArguments("--headless");
+                options.setPageLoadStrategy(PageLoadStrategy.NORMAL);
+                if (headless) {
+                    options.addArguments("--headless");
+                    options.addArguments("--window-size=1920,1080");
+                } else {
+                    options.addArguments("--start-maximized");
+                }
                 options.addArguments(
-                        "--window-size=1920,1080",
                         "--disable-gpu",
                         "--no-sandbox",
                         "--disable-dev-shm-usage",
@@ -53,7 +61,6 @@ public class DriverManager {
                         "--remote-allow-origins=*",
                         "--lang=en-US"
                 );
-
                 Map<String, Object> prefs = new HashMap<>();
                 prefs.put("intl.accept_languages", "en-US,en");
                 prefs.put("profile.default_content_setting_values.notifications", 2);
@@ -63,7 +70,11 @@ public class DriverManager {
                 if (!remoteUrl.isEmpty()) {
                     System.out.println("🌐 Remote Chrome WebDriver kullanılacak: " + remoteUrl);
                     LoggingCommandExecutor exec = new LoggingCommandExecutor(new URL(remoteUrl));
+                    exec.setSink(new CommandJsonSink(jsonLogPath));
+
                     RemoteWebDriver raw = new RemoteWebDriver(exec, options);
+                    exec.setDriverSupplier(() -> raw); // komut sonrası screenshot için driver referansı
+
                     driver = new EventFiringDecorator(new ScreenshotListener()).decorate(raw);
                 } else {
                     System.out.println("💻 Lokal ChromeDriver kullanılacak");
@@ -73,16 +84,26 @@ public class DriverManager {
 
             } else if ("firefox".equalsIgnoreCase(browser)) {
                 FirefoxOptions options = new FirefoxOptions();
-                if (headless) options.addArguments("-headless");
+                options.setPageLoadStrategy(PageLoadStrategy.NORMAL);
+                if (headless) {
+                    options.addArguments("-headless");
+                    options.addArguments("--width=1920", "--height=1080");
+                } else {
+                    // Firefox’ta gerçek maximize bazen gecikebilir; boyut veriyoruz:
+                    options.addArguments("--width=1920", "--height=1080");
+                }
                 options.addPreference("intl.accept_languages", "en-US,en");
                 options.addPreference("dom.webnotifications.enabled", false);
                 options.addPreference("permissions.default.desktop-notification", 2);
-                options.addArguments("--width=1920", "--height=1080");
 
                 if (!remoteUrl.isEmpty()) {
                     System.out.println("🌐 Remote Firefox WebDriver kullanılacak: " + remoteUrl);
                     LoggingCommandExecutor exec = new LoggingCommandExecutor(new URL(remoteUrl));
+                    exec.setSink(new CommandJsonSink(jsonLogPath));
+
                     RemoteWebDriver raw = new RemoteWebDriver(exec, options);
+                    exec.setDriverSupplier(() -> raw);
+
                     driver = new EventFiringDecorator(new ScreenshotListener()).decorate(raw);
                 } else {
                     System.out.println("💻 Lokal FirefoxDriver kullanılacak");

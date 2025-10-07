@@ -14,10 +14,26 @@ import java.util.function.Supplier;
 
 public class LoggingCommandExecutor implements CommandExecutor {
 
+    private static final Set<String> IGNORED_COMMANDS = Set.of(
+            "getScreenshot",
+            "getPageSource",
+            "executeScript",
+            "getElementText",
+            "getTitle",
+            "getWindowHandles",
+            "getWindowHandle",
+            "setTimeouts",
+            "getTimeouts"
+    );
+
     private final CommandExecutor delegate;
     private volatile Supplier<WebDriver> driverSupplier; // screenshot için
     private volatile CommandJsonSink sink;               // json log için
-    private final Set<String> noShot = Set.of("newSession", "quit");
+    private final Set<String> noShot = Set.of(
+            "newSession", "quit", "screenshot", "getElementScreenshot",
+            "actions", "setTimeouts", "getTimeouts", "getTitle", "getPageSource",
+            "getWindowHandle", "getWindowHandles"
+    );
 
     public LoggingCommandExecutor(URL remoteUrl) {
         this.delegate = new HttpCommandExecutor(remoteUrl);
@@ -86,7 +102,6 @@ public class LoggingCommandExecutor implements CommandExecutor {
 
     private boolean shouldCapture(String name) {
         if (name == null) return false;
-        // newSession/quit hariç hepsinde screenshot almak istersen bu satırı false'a çevir
-        return !noShot.contains(name);
+        return !noShot.contains(name) && !IGNORED_COMMANDS.contains(name);
     }
 }
