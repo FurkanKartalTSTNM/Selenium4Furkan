@@ -11,7 +11,8 @@ import java.util.Collections;
 import java.util.List;
 
 public class CommandResultCollector {
-    private static final List<CommandResultLog> LOGS = Collections.synchronizedList(new ArrayList<>());
+    private static final List<CommandResultLog> LOGS =
+            Collections.synchronizedList(new ArrayList<>());
 
     public static void add(CommandResultLog log) { LOGS.add(log); }
 
@@ -22,9 +23,9 @@ public class CommandResultCollector {
             Path file = dir.resolve(fileName);
             ObjectMapper om = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
             om.writeValue(file.toFile(), LOGS);
-            System.out.println("Command results written: " + file);
+            System.out.println("✅ Command results written: " + file + " (count=" + LOGS.size() + ")");
         } catch (Exception e) {
-            System.err.println("Command results write error: " + e.getMessage());
+            System.err.println("❌ Command results write error: " + e.getMessage());
         }
     }
 }

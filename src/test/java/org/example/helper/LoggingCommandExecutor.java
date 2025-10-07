@@ -13,35 +13,32 @@ import java.util.function.Supplier;
 
 public class LoggingCommandExecutor implements CommandExecutor {
 
-    // Screenshot/rapor dışında tutulacak komutlar
     private static final Set<String> IGNORED_COMMANDS = Set.of(
-            "getScreenshot", "getPageSource", "executeScript",
-            "getElementText", "getTitle", "getWindowHandles",
-            "getWindowHandle", "setTimeouts", "getTimeouts"
+            "getScreenshot","getPageSource","executeScript",
+            "getElementText","getTitle","getWindowHandles",
+            "getWindowHandle","setTimeouts","getTimeouts"
     );
 
-    // Screenshot almaya gerek olmayan komutlar
     private static final Set<String> NO_SHOT = Set.of(
-            "newSession", "quit", "screenshot", "getElementScreenshot",
-            "actions", "setTimeouts", "getTimeouts", "getTitle",
-            "getPageSource", "getWindowHandle", "getWindowHandles"
+            "newSession","quit","screenshot","getElementScreenshot",
+            "actions","setTimeouts","getTimeouts","getTitle",
+            "getPageSource","getWindowHandle","getWindowHandles"
     );
 
     private final CommandExecutor delegate;
-    private volatile Supplier<WebDriver> driverSupplier; // screenshot için
-    private volatile CommandJsonSink sink;               // json log için
+    private volatile Supplier<WebDriver> driverSupplier;
+    private volatile CommandJsonSink sink; // opsiyonel
 
     public LoggingCommandExecutor(URL remoteUrl) {
         this.delegate = new HttpCommandExecutor(remoteUrl);
     }
 
-    // entegrasyon noktaları
     public void setDriverSupplier(Supplier<WebDriver> supplier) { this.driverSupplier = supplier; }
     public void setSink(CommandJsonSink sink) { this.sink = sink; }
 
     @Override
     public Response execute(Command command) throws IOException {
-        final long t0 = System.nanoTime();
+        final long t0ns = System.nanoTime();
         Response resp = null;
         IOException thrown = null;
 
@@ -49,55 +46,58 @@ public class LoggingCommandExecutor implements CommandExecutor {
             resp = delegate.execute(command);
             return resp;
         } catch (IOException e) {
-            thrown = e;            // finally’da hata olarak işaretleriz
+            thrown = e;
             throw e;
         } finally {
-            final long ms = (System.nanoTime() - t0) / 1_000_000L;
+            final long elapsedMs = (System.nanoTime() - t0ns) / 1_000_000L;
+            final long startMs   = System.currentTimeMillis() - elapsedMs;
+
             final String cmdName = command.getName();
-            final String sid = command.getSessionId() != null ? command.getSessionId().toString() : "<no-session>";
+            final String sid     = command.getSessionId() != null ? command.getSessionId().toString() : "<no-session>";
+            final Integer status = (resp != null ? resp.getStatus() : null);
+            final String level   = (thrown != null) ? "ERROR" : (status != null && status == 0 ? "PASS" : "INFO");
 
-            Integer status = (resp != null ? resp.getStatus() : null);
-            String level = (thrown != null) ? "ERROR" : (status != null && status == 0 ? "PASS" : "INFO");
-
-            // Screenshot (yalnızca gerekli komutlarda)
             String screenshotPath = null;
             if (shouldCapture(cmdName)) {
-                final Supplier<WebDriver> sup = this.driverSupplier;
+                Supplier<WebDriver> sup = this.driverSupplier;
                 if (sup != null) {
                     try {
                         WebDriver d = sup.get();
-                        if (d != null) {
-                            screenshotPath = ScreenshotUtil.take(d, safeName(cmdName));
-                        }
-                    } catch (Throwable ignore) { /* ekran görüntüsü isteğe bağlı */ }
+                        if (d != null) screenshotPath = ScreenshotUtil.take(d, safeName(cmdName));
+                    } catch (Throwable ignore) {}
                 }
             }
 
-            // JSON sink’e yaz
-            final CommandJsonSink s = this.sink;
+            // ----> 1) Collector’a ekle (JSON garantisi)
+            if (!IGNORED_COMMANDS.contains(cmdName)) {
+                CommandResultLog log = new CommandResultLog();
+                log.setScreenshotName(screenshotPath);
+                log.setMethod(null); // Selenium public API'den kolay erişim yok
+                log.setRequestData(String.valueOf(command.getParameters()));
+                log.setResponseData(status == null ? null : String.valueOf(status));
+                log.setRequestPath(cmdName);
+                log.setStartDate(startMs);
+                log.setRuntime((int) elapsedMs);
+                log.setEndDate(startMs + elapsedMs);
+                log.setLevel(level);
+                CommandResultCollector.add(log);
+            }
+
+            // ----> 2) (Opsiyonel) Ek bir sink kullanıyorsan
+            CommandJsonSink s = this.sink;
             if (s != null && !IGNORED_COMMANDS.contains(cmdName)) {
-                // HTTP method/URI Selenium public API’den alınamıyor; null bırakıyoruz.
-                s.write(
-                        cmdName,                      // requestPath
-                        sid,                          // session id
-                        status == null ? null : status.longValue(),
-                        ms,                           // runtime (ms)
-                        command.getParameters(),      // requestData
-                        null,                         // httpMethod
-                        null,                         // uri
-                        screenshotPath                // screenshotName
-                );
+                s.write(cmdName, sid, status == null ? null : status.longValue(),
+                        elapsedMs, command.getParameters(), null, null, screenshotPath);
             }
 
             System.out.printf("WD CMD %-28s | sid=%s | level=%s | status=%s | %d ms | shot=%s%n",
-                    cmdName, sid, level, String.valueOf(status), ms,
+                    cmdName, sid, level, String.valueOf(status), elapsedMs,
                     (screenshotPath != null ? "yes" : "no"));
         }
     }
 
     private boolean shouldCapture(String name) {
-        if (name == null) return false;
-        return !(NO_SHOT.contains(name) || IGNORED_COMMANDS.contains(name));
+        return name != null && !(NO_SHOT.contains(name) || IGNORED_COMMANDS.contains(name));
     }
 
     private static String safeName(String s) {
